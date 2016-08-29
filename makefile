@@ -1,15 +1,21 @@
-CC=gcc
-CFLAGS=-I. -I/usr/include/openssl -lcrypto -lssl -Wshadow
-DEPS =  
-OBJ = server.o
+SOURCES.c= utils.c websockets.c webserver.c server.c
+INCLUDES= 
+CFLAGS= -I. -I/usr/include/openssl -W -Wshadow
 
-%.o: %.c $(DEPS)
-	$(CC) -c -o $@ $< $(CFLAGS)
+SLIBS= -lcrypto -lssl
+PROGRAM= server
 
-server: $(OBJ)
-	gcc -o $@ $^ $(CFLAGS)
+OBJECTS= $(SOURCES.c:.c=.o)
 
-.PHONY: clean
+.KEEP_STATE:
+
+debug := CFLAGS= -g
+
+all debug: $(PROGRAM)
+
+$(PROGRAM): $(INCLUDES) $(OBJECTS)
+	$(LINK.c) -o $@ $(OBJECTS) $(SLIBS)
 
 clean:
-	rm -f $(ODIR)/*.o *~ core $(INCDIR)/*~ 
+	rm -f $(PROGRAM) $(OBJECTS)
+
