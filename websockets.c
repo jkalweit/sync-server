@@ -1,31 +1,22 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <openssl/bio.h>
-#include <openssl/evp.h>
-
-#include "utils.h"
+#include "websockets.h"
 
 
+static const char MAGIC_WEBSOCKET_STR[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+static int clients[MAXCLIENTS];
+static WebsocketChannel channel_handlers[WEBSOCKETS_MAXCHANNELS];
 
-
-
-#define MAXCLIENTS 64
-const char MAGIC_WEBSOCKET_STR[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-int clients[MAXCLIENTS];
+static int channel_count = 0;
 
 int 
 websockets_init() {
 	bzero(clients, MAXCLIENTS);
+	//bzero(channel_handlers, WEBSOCKETS_MAXCHANNELS);
 	OpenSSL_add_all_algorithms();	
 }
 
 
 static int 
-send_test_message(int sfd) {
+send_test_message(const int sfd) {
 	char message[6];
 	message[0] = 0x81;
 	message[1] = 0x04;
@@ -39,27 +30,46 @@ send_test_message(int sfd) {
 }
 
 int 
-websockets_send_message(int sfd, char *msg) {
+websockets_send_message(const int sfd, const char *msg) {
 
-	int str_len = strlen(msg);
+	size_t str_len = strlen(msg);
 
-	printf("			Sending [%d]: [%s]\n", sfd, msg);
+	printf("			Sending [%d] [%li]: [%s]\n", sfd, str_len, msg);
 
-	char message[1028];
+    char message[1028];
 	message[0] = 0x81;
-	message[1] = (char) str_len;
-	for(int i = 0; i < str_len; i++) {	
-		message[i+2] = msg[i];
+    int data_offset;
+    if (str_len <= 125) {
+	    message[1] = (char) str_len;
+        data_offset = 2;
+    } else if (str_len < 65535) {
+        message[1] = (char) 126;
+        message[2] = (char) (str_len >> 8) & 255;
+        message[3] = (char) (str_len     ) & 255;
+        data_offset = 4;
+    } else  {
+        message[1] = (char) 127;
+        message[2] = (char) (str_len >> 56) & 255;
+        message[3] = (char) (str_len >> 48) & 255;
+        message[4] = (char) (str_len >> 40) & 255;
+        message[5] = (char) (str_len >> 32) & 255;
+        message[6] = (char) (str_len >> 24) & 255;
+        message[7] = (char) (str_len >> 16) & 255;
+        message[8] = (char) (str_len >>  8) & 255;
+        message[9] = (char) (str_len      ) & 255;
+        data_offset = 10;
+    }
+
+	for(unsigned int i = 0; i < str_len; i++) {	
+		message[i+data_offset] = msg[i];
 	}
 
-	//print_bytes(message, str_len+2);	
-	int n = write(sfd,message,str_len+2);
-	//printf("Wrote %d bytes.\n", n);
+	int n = write(sfd,message,str_len+data_offset);
 	if (n < 0) error("ERROR writing msg to socket");
 }
 
-static unsigned 
-int hash_sha1(const char* dataToHash, size_t dataSize, unsigned char* outHashed) {
+static unsigned int 
+hash_sha1(const char* dataToHash, const size_t dataSize, unsigned char* outHashed) {
 	unsigned int md_len = -1;
 	const EVP_MD *md = EVP_get_digestbyname("SHA1");
 	if(NULL != md) {
@@ -74,7 +84,7 @@ int hash_sha1(const char* dataToHash, size_t dataSize, unsigned char* outHashed)
 }
 
 void 
-websockets_remove(int fd) {
+websockets_remove(const int fd) {
 	printf("Remove [%d]\n", fd);
 	for(int i = 0; i < MAXCLIENTS; i++) {
 		if(clients[i] == fd) {
@@ -86,34 +96,30 @@ websockets_remove(int fd) {
 }
 
 void 
-websockets_add(int fd) {
-	printf("add [%d]\n", fd);
+websockets_add(const int fd) {
 	for(int i = 0; i < MAXCLIENTS; i++) {
 		if(clients[i] == 0) {
 			clients[i] = fd;
-			printf("added [%d]\n", fd);
 			return;
 		}
 	}	
 }
 
 int 
-websockets_is_websocket(int fd) {
+websockets_is_websocket(const int fd) {
 	for(int i = 0; i < MAXCLIENTS; i++) {
 		if(clients[i] == fd) {
-			printf("IS a websocket [%d]\n", fd);
 			return 1;
 		}
 	}	
-	printf("IS NOT a websocket [%d]\n", fd);
 	return 0;
 }
 
 int 
-websockets_parse_request(unsigned char *received, int n, int sfd) {
+websockets_parse_request(const int sfd, unsigned char *received, const int received_len) {
 	
-	printf("OpCode [%d] ", sfd);
-	print_bytes(received, 1);
+	//printf("OpCode [%d] ", sfd);
+	//print_bytes(received, 1);
 	if(received[0] == 0x88) {
 		printf("Client request close websocket [%d]\n", sfd);
 		websockets_remove(sfd);
@@ -130,14 +136,11 @@ websockets_parse_request(unsigned char *received, int n, int sfd) {
 	
 
 	char mask[4];
-	//sleep(1);
-	//send_test_message(data->fd);
+	//printf("Received bytes: %d\n", received_len); //, Type: 0x%02X; Size: 0x%02x\n", n, received[0], received[1]); 
+	received[received_len] = '\0';
+	//print_bytes(received, received_len+1);
 
-	printf("Received bytes: %d\n", n); //, Type: 0x%02X; Size: 0x%02x\n", n, received[0], received[1]); 
-	received[n] = '\0';
-	print_bytes(received, n+1);
-
-	char data_length = n-6; //received[2] & 127;
+	char data_length = received_len-6; //received[2] & 127;
 
 	mask[0] = received[2];	
 	mask[1] = received[3];	
@@ -150,26 +153,43 @@ websockets_parse_request(unsigned char *received, int n, int sfd) {
 		received[i+6] = received[i+6] ^ mask[i%4];
 	}
 
-	printf("Decoded bytes: %d\n", n); //, Type: 0x%02X; Size: 0x%02x\n", n, received[0], received[1]); 
-	print_bytes(received, n+1);
-	printf("	Decoded [%d]: %s\n", sfd, &received[6]);
-	print_bytes(&received[6], n-6);
+	//printf("	Decoded [%d]: %s\n", sfd, &received[6]);
+	//print_bytes(&received[6], received_len-6);
 
-	char echo[256] = "Echo: ";
-	strcat(echo, &received[6]);
 
+    char *channel = strtok(&received[6], " ");
+    char *cmd = strtok(NULL, " ");
+    char *data = strtok(NULL, "");
+
+    //printf("Channel [%s] Data: [%s]\n", channel, data);
+
+
+    websocket_channel_handler handler = websocket_get_channel(channel);
+    if(handler != 0) {
+        WebsocketMessage msg;
+        msg.sfd = sfd;
+        msg.channel = channel;
+        msg.cmd = cmd;
+        msg.data = data;
+        handler(&msg);
+    }
+}
+
+int
+websockets_broadcast(const char *msg) {
 	for(int i = 0; i < MAXCLIENTS; i++) {
 		if(clients[i] != 0) {
-			printf("		Echoing to [%d]\n", clients[i]);
-			websockets_send_message(clients[i], echo);
+			printf("		Sending to [%d]\n", clients[i]);
+			websockets_send_message(clients[i], msg);
 		}
 	}	
 }
 
 
 int 
-websockets_accept(int sfd, char *client_key) {
+websockets_accept(const int sfd, const char *client_key) {
 
+    printf("Accepting....[%d]\n", sfd);
 	int key_size = 1028;
 	unsigned char key[key_size];
 	const size_t SHA_DIGEST_LENGTH_HEX = 40;	
@@ -223,8 +243,10 @@ websockets_accept(int sfd, char *client_key) {
 	write_string(sfd, "\r\n");
 
 	websockets_add(sfd);
+    
+    printf("Accepted [%d]\n", sfd);
 
-	printf("##Accepted websocket: fd [%d] is_websocket [%d] \n", sfd, websockets_is_websocket(sfd)); 
+	//printf("##Accepted websocket: fd [%d] is_websocket [%d] \n", sfd, websockets_is_websocket(sfd)); 
 
 	//sleep(1);
 	//send_test_message(sfd);
@@ -232,3 +254,34 @@ websockets_accept(int sfd, char *client_key) {
 
 
 
+int 
+websockets_add_channel(const char *channel, const websocket_channel_handler handler) {
+    if(channel_count == WEBSOCKETS_MAXCHANNELS) return -1;
+    int channel_len = strlen(channel);
+    if(channel_len > WEBSOCKETS_MAXCHANNEL_LEN-1) return -1;
+    WebsocketChannel *channel_handler = &channel_handlers[channel_count];
+    strcpy(channel_handler->channel, channel);
+    channel_handler->channel[channel_len] = '\0';
+    channel_handler->handler = handler;
+    //printf("Added channel [%p] [%d] [%s]\n", &channel_handler->channel, channel_count, channel_handler->channel);
+    //print_bytes(channel_handler->channel, 5);
+    //print_bytes("db", 3);
+    channel_count++;
+    return channel_count;
+}
+
+websocket_channel_handler 
+websocket_get_channel(const char *channel) {
+    //printf("Looking for channel [%d] [%s]\n", channel_count, channel);
+    for(int i = 0; i < channel_count; i++) {
+        WebsocketChannel *c = &channel_handlers[i];
+        //printf("Comparing channel [%p] [%d] [%s]\n", c->channel, i, c->channel);
+        //print_bytes(c->channel, 5);
+        if(strcmp(channel, c->channel) == 0) {
+            //printf("Found channel [%s]\n", channel);
+            return c->handler;
+        }
+    }
+    printf("DID NOT find channel [%s]\n", channel);
+    return NULL;
+}

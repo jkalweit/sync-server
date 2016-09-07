@@ -1,54 +1,151 @@
 <html>
 
 <body>
-Test from file changed 3!
+<h1>PMs</h1>
+<button onclick="init()">Init</button>
+<input id="pmlist" />
+<button onclick="addPMList()">Add PM List</button>
+<br />
+<input id="pm" />
+<button onclick="addPM()">Add</button>
+<br />
 
-<p id="text">This should change.</p>
-<input id="msg" />
-<button onclick="sendMessage()">Send Message</button>
-<button onclick="closeSocket()">Close Socket</button>
-<p>Received:</p>
+<p>Log:</p>
 <ul id="received">
 </ul>
 
 </body>
 <script>
-	document.getElementById('text').innerHTML = 'Changed!';
-	var received = document.getElementById('received');
-	
 
-	function addMsg(msg) {
-		var el = document.createElement('li');
-		el.innerHTML = msg;
-		received.appendChild(el);
-	}
+var received = document.getElementById('received');
 
-	function sendMessage() {
-		var message = document.getElementById('msg').value;
-		addMsg('Sending: ' + message);
-		socket.send(message);
-	}
+var pm_root;
 
-	function closeSocket() {
-		socket.close();
-	}
+var request_count = 0;
+var requests = {};
 
-	var socket = new WebSocket('ws://' + window.location.host + '/data');
-	socket.onopen = function (event) {
-		addMsg('Opened socket');
-	}
-	socket.onclose = function (event) {
-		addMsg('Closed socket');
-	}
-	socket.onerror = function (event) {
-		addMsg('Socket ERROR');
-		console.log('Socket error: ', event);
-	}
-	socket.onmessage = function (event) {
-		addMsg('Received message: ' + event.data);
-		console.log('socket rcvd:', event);
-	};
-	console.log('socket', socket);
+
+function sendRequest(request) {
+    request.key = ++request_count;
+    requests[request.key] = request;
+    var msg = request.channel + " " + request.cmd + " " + request.data.key + " "  + JSON.stringify(request.data);
+    console.log("request ", msg, request);
+    socket.send(msg);
+}
+
+function completeRequest(response) {
+    var request = requests[response.request.key];
+    console.log("response", response.reponse);
+    if(request && request.callback) {
+        delete requests[request.key];
+        request.callback(response.response);
+    }
+}
+
+function init() {
+   var request = {
+       channel: 'pm',
+       cmd: 'get',
+       data: {key: '1'},
+       callback: function(response) {
+           console.log('Received reponse: ', response);
+           if(Object.keys(response).length === 0) {
+              console.log('Empty init');
+              sendRequest({
+                  channel: 'pm',
+                  cmd: 'put',
+                  data: {
+                      key: 1,
+                      pmLists: {}
+                  }
+              });
+           }
+       }
+   };
+   sendRequest(request);
+}
+
+function addPMList() {
+    var val = document.getElementById('pmlist').value;
+    var pm_list = {
+
+    }
+}
+
+
+
+
+
+function addMsg(msg) {
+    var el = document.createElement('li');
+    el.innerHTML = msg;
+    received.appendChild(el);
+}
+
+function sendMessage(msg) {
+    addMsg('Sending: ' + msg);
+    socket.send(msg);
+}
+
+
+var timerID=0;
+var socket;
+var reload = false;
+var isReconnecting = false;
+
+function closeSocket() { socket.close(); }
+
+function addPM() {
+    var id = document.getElementById("id").value;
+    var obj = { pm: document.getElementById("pm").value, createdAt: new Date().toISOString() };
+    var msg = "put " + id + " " + JSON.stringify(obj);
+    socket.send(msg);
+    console.log("Sent ", msg);
+}
+
+function getPM() {
+    var msg = "get " + document.getElementById("id").value;
+    socket.send(msg);
+    console.log("Sent ", msg);
+}
+
+function start(){
+    var serverAddress = 'ws://' + window.location.host + '/data';
+    socket = new WebSocket(serverAddress);
+    socket.onopen = function (event) {
+        console.log('Opened!', reload);
+        if(isReconnecting) location.reload();
+        if(window.timerID){
+            window.clearInterval(window.timerID);
+            window.timerID=0;
+        }
+        addMsg('Opened socket');
+    }
+    socket.onclose = function (event) {
+        if(!isReconnecting) {
+            addMsg('Closed socket');
+        }
+        if(!window.timerID){ /* avoid firing a new setInterval, after one has been done */
+            isReconnecting = true;
+            window.timerID=setInterval(function(){start(serverAddress)}, 1000);
+        }
+    }
+    socket.onerror = function (event) {
+        if(!isReconnecting) {
+            addMsg('Socket ERROR');
+            console.log('Socket error: ', event);
+        }
+    }
+    socket.onmessage = function (event) {
+        addMsg('Received message: ' + event.data);
+        console.log('socket rcvd:', event);
+        completeRequest(JSON.parse(event.data));
+    };
+}
+
+console.log('doing start...');
+start();
+
 
 </script>
 

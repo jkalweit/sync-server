@@ -13,9 +13,12 @@ debug := CFLAGS= -g
 
 all debug: $(PROGRAM)
 
-$(PROGRAM): $(INCLUDES) $(OBJECTS)
+$(PROGRAM): .FORCE $(INCLUDES) $(OBJECTS)
 	$(LINK.c) -o $@ $(OBJECTS) $(SLIBS)
 
 clean:
 	rm -f $(PROGRAM) $(OBJECTS)
+
+.PHONY: .FORCE
+.FORCE:
 
