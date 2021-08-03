@@ -6,6 +6,7 @@
 <input id="pmlist" />
 <button onclick="addPMList()">Add PM List</button>
 <br />
+<input id="id" />
 <input id="pm" />
 <button onclick="addPM()">Add</button>
 <br />
@@ -98,7 +99,7 @@ function closeSocket() { socket.close(); }
 function addPM() {
     var id = document.getElementById("id").value;
     var obj = { pm: document.getElementById("pm").value, createdAt: new Date().toISOString() };
-    var msg = "put " + id + " " + JSON.stringify(obj);
+    var msg = "pm put " + id + " " + JSON.stringify(obj);
     socket.send(msg);
     console.log("Sent ", msg);
 }

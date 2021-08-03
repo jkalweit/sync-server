@@ -72,13 +72,14 @@ static unsigned int
 hash_sha1(const char* dataToHash, const size_t dataSize, unsigned char* outHashed) {
 	unsigned int md_len = -1;
 	const EVP_MD *md = EVP_get_digestbyname("SHA1");
+	EVP_MD_CTX *mdctx;
+	mdctx = EVP_MD_CTX_create();
 	if(NULL != md) {
-		EVP_MD_CTX mdctx;
-		EVP_MD_CTX_init(&mdctx);
-		EVP_DigestInit_ex(&mdctx, md, NULL);
-		EVP_DigestUpdate(&mdctx, dataToHash, dataSize);
-		EVP_DigestFinal_ex(&mdctx, outHashed, &md_len);
-		EVP_MD_CTX_cleanup(&mdctx);
+		EVP_MD_CTX_init(mdctx);
+		EVP_DigestInit_ex(mdctx, md, NULL);
+		EVP_DigestUpdate(mdctx, dataToHash, dataSize);
+		EVP_DigestFinal_ex(mdctx, outHashed, &md_len);
+		EVP_MD_CTX_destroy(mdctx);
 	}
 	return md_len;
 }

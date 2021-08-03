@@ -99,6 +99,8 @@ handle_pm(WebsocketMessage *msg) {
         printf("Handle Put: [%d] [%s] [%s]\n", msg->sfd, msg->channel, msg->data);
         fprintf(save_fp, "%s %s\n", msg->cmd, msg->data);
         put(msg->data);
+    } else {
+        printf("Unknown cmd: [%s] [%s] [%s]\n", msg->cmd, msg->channel, msg->data);
     }
 }
 
