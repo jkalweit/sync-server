@@ -1,14 +1,8 @@
 <html>
 
 <body>
-<h1>PMs</h1>
-<button onclick="init()">Init</button>
-<input id="pmlist" />
-<button onclick="addPMList()">Add PM List</button>
-<br />
-<input id="id" />
-<input id="pm" />
-<button onclick="addPM()">Add</button>
+<h1>Test Websockets</h1>
+<button onclick="test()">Init</button>
 <br />
 
 <p>Log:</p>
@@ -20,62 +14,11 @@
 
 var received = document.getElementById('received');
 
-var pm_root;
-
-var request_count = 0;
-var requests = {};
-
-
-function sendRequest(request) {
-    request.key = ++request_count;
-    requests[request.key] = request;
-    var msg = request.channel + " " + request.cmd + " " + request.data.key + " "  + JSON.stringify(request.data);
-    console.log("request ", msg, request);
+function test() {
+    var msg = "default test";
+    console.log("msg: ", msg);
     socket.send(msg);
 }
-
-function completeRequest(response) {
-    var request = requests[response.request.key];
-    console.log("response", response.reponse);
-    if(request && request.callback) {
-        delete requests[request.key];
-        request.callback(response.response);
-    }
-}
-
-function init() {
-   var request = {
-       channel: 'pm',
-       cmd: 'get',
-       data: {key: '1'},
-       callback: function(response) {
-           console.log('Received reponse: ', response);
-           if(Object.keys(response).length === 0) {
-              console.log('Empty init');
-              sendRequest({
-                  channel: 'pm',
-                  cmd: 'put',
-                  data: {
-                      key: 1,
-                      pmLists: {}
-                  }
-              });
-           }
-       }
-   };
-   sendRequest(request);
-}
-
-function addPMList() {
-    var val = document.getElementById('pmlist').value;
-    var pm_list = {
-
-    }
-}
-
-
-
-
 
 function addMsg(msg) {
     var el = document.createElement('li');
@@ -95,20 +38,6 @@ var reload = false;
 var isReconnecting = false;
 
 function closeSocket() { socket.close(); }
-
-function addPM() {
-    var id = document.getElementById("id").value;
-    var obj = { pm: document.getElementById("pm").value, createdAt: new Date().toISOString() };
-    var msg = "pm put " + id + " " + JSON.stringify(obj);
-    socket.send(msg);
-    console.log("Sent ", msg);
-}
-
-function getPM() {
-    var msg = "get " + document.getElementById("id").value;
-    socket.send(msg);
-    console.log("Sent ", msg);
-}
 
 function start(){
     var serverAddress = 'ws://' + window.location.host + '/data';
@@ -140,7 +69,6 @@ function start(){
     socket.onmessage = function (event) {
         addMsg('Received message: ' + event.data);
         console.log('socket rcvd:', event);
-        completeRequest(JSON.parse(event.data));
     };
 }
 

@@ -1,0 +1,153 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+
+#include "webserver.h"
+#include "utils.h"
+
+static int node_count;
+
+typedef struct Node {
+    char *id;
+    char *data;
+    struct Node *next;
+} Node;
+
+Node *node_list = NULL;
+
+FILE *save_fp;
+
+void intHandler(int dummy) {
+    WEBSERVER_RUNNING = 0;
+}
+
+int 
+handle_favicon(Request *request) {
+    webserver_send404(request->socketfd);
+}
+
+int
+handle_index(Request *request) {
+    printf("Test: [%s]\n", request->request);
+    webserver_send_file(request->socketfd, "index.html");
+}
+
+int
+handle_temp(Request *request) {
+    printf("Temp: [%d] [%s]\n", request->socketfd, request->request);
+}
+
+Node*
+put(char *data) {
+
+    char *id = strtok(data, " ");
+    char *node_data = strtok(NULL, "");
+
+    printf("ID [%s] node_data [%s]\n", id, node_data);
+
+    Node *curr = malloc(sizeof(Node));
+    curr->id = copy_string(id);
+    curr->data = copy_string(node_data);
+    curr->next = NULL;
+
+    if(node_list != NULL) {
+        curr->next = node_list;
+    }
+
+    node_list = curr;
+}
+
+
+int
+handle_get(WebsocketMessage *msg) {
+    printf("Get [%s]\n", msg->data);
+    char *id = strtok(msg->data, " ");
+    char *request = strtok(NULL, "");
+    printf("handle_get ID [%s] request [%s]\n", id, request);
+
+    Node *search = node_list;
+    char response[2048] = "{\"request\":";
+    strcat(response, request);
+    Node *result = NULL;
+    while(search != NULL) {
+        printf("Comparing [%s] [%s]\n", search->id, id);
+        if(strcmp(search->id, id) == 0) {
+            printf("Found!\n");
+            result = search;
+            break;
+        }
+        search = search->next; 
+    }
+    strcat(response, ",\"response\":");
+    if(result != NULL) {
+        strcat(response, result->data);
+    } else {
+        strcat(response, "{}");
+    }
+    strcat(response, "}");
+    websockets_send_message(msg->sfd, response);
+    return 0;
+}
+
+
+int
+handle_pm(WebsocketMessage *msg) {
+    
+    if(strcmp(msg->cmd, "get") == 0) {
+        printf("Handle Get: [%d] [%s] [%s]\n", msg->sfd, msg->channel, msg->data);
+        handle_get(msg);
+    } else if(strcmp(msg->cmd, "put") == 0) {
+        printf("Handle Put: [%d] [%s] [%s]\n", msg->sfd, msg->channel, msg->data);
+        fprintf(save_fp, "%s %s\n", msg->cmd, msg->data);
+        put(msg->data);
+    } else {
+        printf("Unknown cmd: [%s] [%s] [%s]\n", msg->cmd, msg->channel, msg->data);
+    }
+}
+
+int
+read_log(FILE *fp) {
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t count;
+    char *without_newline;
+    char *cmd;
+    char *payload;
+    printf("Reading...\n");
+    while((count = getline(&line, &len, save_fp)) != -1) {
+        without_newline = strtok(line, "\r\n");
+        printf("Line read: [%s]\n", without_newline);
+        cmd = strtok(without_newline, " ");
+        payload = strtok(NULL, "");
+        put(payload);
+    }
+    free(line);
+}
+
+    int 
+main (int argc, char *argv[])
+{
+
+    char filename[] = "pm.log";
+    save_fp = fopen(filename, "a+");
+    if(save_fp == NULL) {
+        printf("Failed to open log file [%s]\n", filename);
+        exit(1);
+    }
+
+    read_log(save_fp);
+
+    signal(SIGINT, intHandler);
+    webserver_init();
+
+    webserver_add_route("/", handle_index); 
+    webserver_add_route("/temp", handle_temp); 
+    webserver_add_route("/favicon.ico", handle_favicon); 
+
+    websockets_add_channel("pm", handle_pm);
+
+    webserver_start("8080");
+    fclose(save_fp);
+    printf("Log saved [%s].\n", filename);
+    return EXIT_SUCCESS;
+}

@@ -2,7 +2,7 @@ SOURCES.c= utils.c websockets.c webserver.c server.c
 INCLUDES= 
 CFLAGS= -I. -I/usr/include/openssl -W -Wshadow
 
-SLIBS= -lcrypto -lssl
+SLIBS= -lcrypto -lssl -lpthread
 PROGRAM= server
 
 OBJECTS= $(SOURCES.c:.c=.o)

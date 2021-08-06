@@ -1,152 +1,116 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <pthread.h>
 
 #include "webserver.h"
 #include "utils.h"
 
-static int node_count;
 
-typedef struct Node {
-    char *id;
-    char *data;
-    struct Node *next;
-} Node;
+struct Stepper {
+	char name[50];
+	int position;
+	int target_position;
+};
 
-Node *node_list = NULL;
+struct Stepper xAxis;
+struct Stepper yAxis;
 
-FILE *save_fp;
+int
+move_stepper(struct Stepper* stepper) {
+	int diff = stepper->target_position - stepper->position;
+	if(diff == 0) return 0;
+	int step = 0;
+	if(diff > 0) step = 1;
+	if(diff < 0) step = -1;
+	printf("Moving %s %d->%d %d\n", stepper->name, stepper->position, stepper->target_position, step);
+	stepper->position += step;	
+}
 
 void intHandler(int dummy) {
-    WEBSERVER_RUNNING = 0;
+	WEBSERVER_RUNNING = 0;
 }
 
 int 
 handle_favicon(Request *request) {
-    webserver_send404(request->socketfd);
+	webserver_send404(request->socketfd);
 }
 
 int
 handle_index(Request *request) {
-    printf("Test: [%s]\n", request->request);
-    webserver_send_file(request->socketfd, "index.html");
-}
-
-int
-handle_temp(Request *request) {
-    printf("Temp: [%d] [%s]\n", request->socketfd, request->request);
-}
-
-Node*
-put(char *data) {
-
-    printf("Herreee...\n");
-    char *id = strtok(data, " ");
-    char *node_data = strtok(NULL, "");
-
-    printf("ID [%s] node_data [%s]\n", id, node_data);
-
-    Node *curr = malloc(sizeof(Node));
-    curr->id = copy_string(id);
-    curr->data = copy_string(node_data);
-    curr->next = NULL;
-
-    if(node_list != NULL) {
-        curr->next = node_list;
-    }
-
-    node_list = curr;
+	printf("Test: [%s]\n", request->request);
+	webserver_send_file(request->socketfd, "index.html");
 }
 
 
 int
-handle_get(WebsocketMessage *msg) {
-    printf("Get [%s]\n", msg->data);
-    char *id = strtok(msg->data, " ");
-    char *request = strtok(NULL, "");
-    Node *search = node_list;
-    char response[2048] = "{\"request\":";
-    strcat(response, request);
-    Node *result = NULL;
-    while(search != NULL) {
-        printf("Comparing [%s] [%s]\n", search->id, id);
-        if(strcmp(search->id, id) == 0) {
-            printf("Found!\n");
-            result = search;
-            break;
-        }
-        search = search->next; 
-    }
-    strcat(response, ",\"response\":");
-    if(result != NULL) {
-        strcat(response, result->data);
-    } else {
-        strcat(response, "{}");
-    }
-    strcat(response, "}");
-    websockets_send_message(msg->sfd, response);
-    return 0;
+send_ping() {
+	// char response[100];
+	move_stepper(&xAxis);
+	move_stepper(&yAxis);
+	// sprintf(response, "X:%d:%d Y:%d:%d", xAxis.position, xAxis.target_position, yAxis.position, yAxis.target_position);
+	// websockets_broadcast(response);
+}
+
+void *
+PrintHello(void *threadid) {
+	while(1) {
+		// printf("Hello World!\n");
+		send_ping();
+		usleep(10);
+	}
+	printf("Done!\n");
+	pthread_exit(NULL);
 }
 
 
 int
-handle_pm(WebsocketMessage *msg) {
-    
-    if(strcmp(msg->cmd, "get") == 0) {
-        printf("Handle Get: [%d] [%s] [%s]\n", msg->sfd, msg->channel, msg->data);
-        handle_get(msg);
-    } else if(strcmp(msg->cmd, "put") == 0) {
-        printf("Handle Put: [%d] [%s] [%s]\n", msg->sfd, msg->channel, msg->data);
-        fprintf(save_fp, "%s %s\n", msg->cmd, msg->data);
-        put(msg->data);
-    } else {
-        printf("Unknown cmd: [%s] [%s] [%s]\n", msg->cmd, msg->channel, msg->data);
-    }
+handle_default(WebsocketMessage *msg) {
+
+	xAxis.target_position += 1000;
+	printf("Handle test: [%d]\n", xAxis.target_position);
+
+	/*
+	   if(strcmp(msg->cmd, "get") == 0) {
+	   printf("Handle Get: [%d] [%s] [%s]\n", msg->sfd, msg->channel, msg->data);
+	   handle_get(msg);
+	   } else if(strcmp(msg->cmd, "put") == 0) {
+	   printf("Handle Put: [%d] [%s] [%s]\n", msg->sfd, msg->channel, msg->data);
+	   fprintf(save_fp, "%s %s\n", msg->cmd, msg->data);
+	   put(msg->data);
+	   } else {
+	   printf("Unknown cmd: [%s] [%s] [%s]\n", msg->cmd, msg->channel, msg->data);
+	   }
+	   */
+
+	//websockets_send_message(msg->sfd, response);
 }
 
-int
-read_log(FILE *fp) {
-    char *line = NULL;
-    size_t len = 0;
-    ssize_t count;
-    char *without_newline;
-    char *cmd;
-    char *payload;
-    printf("Reading...\n");
-    while((count = getline(&line, &len, save_fp)) != -1) {
-        without_newline = strtok(line, "\r\n");
-        printf("Line read: [%s]\n", without_newline);
-        cmd = strtok(without_newline, " ");
-        payload = strtok(NULL, "");
-        put(payload);
-    }
-    free(line);
-}
 
-    int 
+int 
 main (int argc, char *argv[])
 {
+	strcpy(xAxis.name, "X-Axis");
+	xAxis.position = 0;
+	xAxis.target_position = 50;
 
-    char filename[] = "pm.log";
-    save_fp = fopen(filename, "a+");
-    if(save_fp == NULL) {
-        printf("Failed to open log file [%s]\n", filename);
-        exit(1);
-    }
+	strcpy(yAxis.name, "Y-Axis");
+	yAxis.position = 20;
+	yAxis.target_position = 10;
 
-    read_log(save_fp);
+	signal(SIGINT, intHandler);
 
-    signal(SIGINT, intHandler);
-    webserver_init();
+	pthread_t tid; 
+	pthread_create(&tid, NULL, PrintHello, NULL);
 
-    webserver_add_route("/", handle_index); 
-    webserver_add_route("/temp", handle_temp); 
-    webserver_add_route("/favicon.ico", handle_favicon); 
+	webserver_init();
 
-    websockets_add_channel("pm", handle_pm);
+	webserver_add_route("/", handle_index); 
+	webserver_add_route("/favicon.ico", handle_favicon); 
 
-    webserver_start("8080");
-    fclose(save_fp);
-    printf("Log saved [%s].\n", filename);
-    return EXIT_SUCCESS;
+	websockets_add_channel("default", handle_default);
+
+	webserver_start("8080");
+	printf("Program finished.\n");
+	return EXIT_SUCCESS;
 }
