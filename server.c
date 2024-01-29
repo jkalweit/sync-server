@@ -67,8 +67,8 @@ PrintHello(void *threadid) {
 int
 handle_default(WebsocketMessage *msg) {
 
-	xAxis.target_position += 1000;
-	printf("Handle test: [%d]\n", xAxis.target_position);
+	//xAxis.target_position += 1000;
+	//printf("Handle test: [%d]\n", xAxis.target_position);
 
 	/*
 	   if(strcmp(msg->cmd, "get") == 0) {
@@ -83,13 +83,17 @@ handle_default(WebsocketMessage *msg) {
 	   }
 	   */
 
-	//websockets_send_message(msg->sfd, response);
+		
+	printf("Msg received: [%s] [%s] [%s]\n", msg->cmd, msg->channel, msg->data);
+	//websockets_send_message(msg->sfd, msg->data);
+	websockets_broadcast(msg->channel);
 }
 
 
 int 
 main (int argc, char *argv[])
 {
+	/*
 	strcpy(xAxis.name, "X-Axis");
 	xAxis.position = 0;
 	xAxis.target_position = 50;
@@ -97,11 +101,12 @@ main (int argc, char *argv[])
 	strcpy(yAxis.name, "Y-Axis");
 	yAxis.position = 20;
 	yAxis.target_position = 10;
+	*/
 
 	signal(SIGINT, intHandler);
 
-	pthread_t tid; 
-	pthread_create(&tid, NULL, PrintHello, NULL);
+	//pthread_t tid; 
+	//pthread_create(&tid, NULL, PrintHello, NULL);
 
 	webserver_init();
 

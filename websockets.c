@@ -162,7 +162,7 @@ websockets_parse_request(const int sfd, unsigned char *received, const int recei
     char *cmd = strtok(NULL, " ");
     char *data = strtok(NULL, "");
 
-    //printf("Channel [%s] Data: [%s]\n", channel, data);
+    printf("Channel [%s] Data: [%s]\n", channel, data);
 
 
     websocket_channel_handler handler = websocket_get_channel(channel);
