@@ -26,8 +26,6 @@
 #define WEBSERVER_MAXROUTES 128
 #define WEBSERVER_MAXREQUEST_LEN 100000
 
-volatile int WEBSERVER_RUNNING;
-
 typedef struct Request {
     int socketfd;
     char request[WEBSERVER_MAXREQUEST_LEN]; // full request buffer

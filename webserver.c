@@ -1,5 +1,7 @@
 #include "webserver.h"
 
+volatile int WEBSERVER_RUNNING;
+
 static struct RouteHandler  ROUTE_HANDLERS[WEBSERVER_MAXROUTES];
 static int                  ROUTE_HANDLER_COUNT = 0;
 
